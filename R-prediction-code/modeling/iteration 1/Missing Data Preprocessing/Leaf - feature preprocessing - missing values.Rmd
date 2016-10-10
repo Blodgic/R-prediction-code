@@ -1,0 +1,112 @@
+
+#### 1. Load data 
+
+##### Load base training/test dataset and ensure proper class assignments
+```{r}
+base.tt = read.csv("C:/Users/Joshua/Google Drive/MSBA/Capstone/Morton/Modeling/tt123.csv")
+# visually verify import
+#View(base.tt)
+nrow(base.tt)
+str(base.tt) 
+base.tt$Memid = as.factor(base.tt$Memid)
+base.tt$Visits = as.numeric(base.tt$Visits)
+base.tt$Rental = as.numeric(base.tt$Rental)
+base.tt$Bday_party = as.numeric(base.tt$Bday_party)
+base.tt$CnBio.Age = as.numeric(base.tt$CnBio.Age)
+base.tt$CnMem.1.01.Consecutive.Years = as.numeric(base.tt$CnMem.1.01.Consecutive.Years)
+
+# make adjustments - convert na values in donation field to 0; the assumption made here is that if no donation trans were found in cp data, then they made no donations.  na implies it's a missing value, which under this assumption it is not.
+base.tt$donations[is.na(base.tt$donations)] = 0
+
+# convert target/response value to numeric - some models won't accept factor values
+base.tt$CnMem.1.01.Standing = ifelse(base.tt$CnMem.1.01.Standing == "churn", 1, 0)
+base.tt$CnMem.1.01.Standing = as.factor(base.tt$CnMem.1.01.Standing)
+class(base.tt$CnMem.1.01.Standing)
+
+```
+
+#### 2. Dealing with missing values
+
+##### Option 1: remove instances with missing values
+```{r}
+# see how many instnaces have missing values 
+nrow(base.tt[!complete.cases(base.tt),]) / nrow(base.tt) # 49% have missing values
+
+# function to summarize NAs in each column of dataframe
+checkna <- function(dataframe) {
+  m <- sapply(dataframe, function(x) {
+  	data.frame(
+			All_Records=length(x), 
+      NAs=sum(is.na(x)), 
+			NAPercent=sum(is.na(x))/length(x)
+		)
+	})
+	d <- data.frame(t(m))
+	d <- sapply(d, unlist)
+	d <- as.data.frame(d)
+	d$variable <- row.names(d)
+	row.names(d) <- NULL
+	d <- cbind(d[ncol(d)],d[-ncol(d)])
+	return(d[order(d$NAPercent), ])
+}
+
+checkna(base.tt) # shows that age and age group accounts for nearly all na values.  
+
+# remove age and age group
+base.tt.sansage = subset(base.tt, select = -c(Age.Group, CnBio.Age))
+checkna(base.tt.sansage)
+
+# Version 1 - excluding age variables, remove the few na instnaces in the Distance variable
+base.tt.excludeAge = base.tt.sansage[complete.cases(base.tt.sansage),]
+checkna(base.tt.excludeAge)
+
+# version 2 - including age variables, remove all na instnaces (approx 50%)
+base.tt.includeAge = base.tt[complete.cases(base.tt),]
+checkna(base.tt.includeAge)
+```
+
+> Determined that the vast majority of NA values were attributable to the Age variables and a few instances to the Distance variable.  Hence, created two versions of the file with NA values ommitted: 1) excluding age variables and 2) including age variables.  The version including age variables resulted in approx half of the instances being removed.  The version excluding age variables retained most of the instances, but obviously lost the age variables as predictors. 
+
+##### Option 2: impute missing values
+
+```{r}
+
+# Fill-in the unknowns with the most common value (a statistic of centrality)
+library(DMwR)
+base.tt.CI = centralImputation(base.tt)
+checkna(base.tt.CI)
+
+# Fill-in with the most common value on the cases that are more "similar" to the one with unknowns
+base.tt.KI = knnImputation(base.tt, k=10)
+checkna(base.tt.KI)
+```
+
+##### Option 3: do nothing and allow model to account for missing values (does not work with most models)
+
+```{r}
+# n/a - use base.tt
+```
+
+##### remove Memid 
+```{r}
+base.tt.excludeAge = subset(base.tt.excludeAge, select=-c(Memid))
+base.tt.includeAge = subset(base.tt.includeAge, select=-c(Memid))
+base.tt.CI = subset(base.tt.CI, select=-c(Memid))
+base.tt.KI = subset(base.tt.KI, select=-c(Memid))
+
+```
+
+
+> Accounting for missing values has resulted in the following data sets:
+
+ - Option 1: remove missing values
+   - base.tt.excludeAge: excluding age variables and removing all na instances
+   - base.tt.includeAge: including age variables and removing all na instances
+
+ - Option 2: impute values
+   - base.tt.CI: Fill-in the unknowns with the most common value
+   - base.tt.KI: Fill-in with the most common value on the cases that are more "similar" to the one with unknowns 
+  
+ - Option 3: do nothing and allow models to account for missing values
+   - base.tt 
+

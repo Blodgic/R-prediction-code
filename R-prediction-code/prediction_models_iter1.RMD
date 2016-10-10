@@ -1,0 +1,276 @@
+
+# Assignment# 3 Classification model 
+========================================================
+Author  : Ravi Sangili
+Date    : 07/22/2014
+
+## Import the data 
+
+```{r include=FALSE}
+if (!require("Hmisc")) {
+  install.packages("Hmisc", repos="http://cran.rstudio.com/") 
+  library('Hmisc')
+}
+if (!require("DMwR")) {
+  install.packages("DMwR", repos="http://cran.rstudio.com/") 
+  library('DMwR')
+}
+if (!require("car")) {
+  install.packages("car", repos="http://cran.rstudio.com/") 
+  library('car')
+}
+if (!require("lattice")) {
+  install.packages("lattice", repos="http://cran.rstudio.com/") 
+  library('lattice')
+}
+
+if (!require("e1071")) {
+  install.packages("e1071", repos="http://cran.rstudio.com/") 
+  library('e1071')
+  }
+if (!require("randomForest")) {
+  install.packages("randomForest", repos="http://cran.rstudio.com/") 
+  library('randomForest')
+  }
+if (!require("mlbench")) {
+  install.packages("mlbench", repos="http://cran.rstudio.com/") 
+  library('mlbench')
+  }
+
+if (!require("performanceEstimation")) {
+  install.packages("performanceEstimation", repos="http://cran.rstudio.com/") 
+  library('performanceEstimation')
+  }
+
+```
+## Import data
+
+```{r}
+txn <- read.csv("features_pre_process2.csv",header=TRUE, sep=",")
+#                stringsAsFactors=FALSE)
+
+```
+
+##   Model data
+### I am doing random sampling to split the data set in to training (70%)
+### and test instances (30%).
+
+### I am building the svm model using the full feature set
+
+### SVM modeling with number of visits as a single feature
+
+```{r}
+set.seed(1234)
+trPerc <- 0.7
+sp <- sample(1:nrow(txn),as.integer(trPerc*nrow(txn)))
+tr <- txn[sp, ]
+ts <- txn[-sp, ]
+s <- svm( CnMem.1.01.Standing ~  Visits, tr)
+preds <- predict(s, ts)
+conf_mat <- table(ts$CnMem.1.01.Standing,preds)
+err_rate_svm1 <- (1 - sum(diag(conf_mat))/sum(conf_mat))
+err_rate_svm1
+
+```
+> SVM model with Visits and consecutive years
+
+```{r}
+set.seed(1234)
+trPerc <- 0.7
+sp <- sample(1:nrow(txn),as.integer(trPerc*nrow(txn)))
+tr <- txn[sp, ]
+ts <- txn[-sp, ]
+s <- svm( CnMem.1.01.Standing ~  Visits + CnMem.1.01.Consecutive.Years , tr)
+preds <- predict(s, ts)
+conf_mat <- table(ts$CnMem.1.01.Standing,preds)
+err_rate_svm2 <- (1 - sum(diag(conf_mat))/sum(conf_mat))
+err_rate_svm2
+```
+
+## SVM modeling with Visits, Events and consecutive years as members
+```{r}
+set.seed(1234)
+trPerc <- 0.7
+sp <- sample(1:nrow(txn),as.integer(trPerc*nrow(txn)))
+tr <- txn[sp, ]
+ts <- txn[-sp, ]
+s <- svm( CnMem.1.01.Standing ~  Visits + Events + CnMem.1.01.Consecutive.Years , tr)
+preds <- predict(s, ts)
+conf_mat <- table(ts$CnMem.1.01.Standing,preds)
+err_rate_svm3 <- (1 - sum(diag(conf_mat))/sum(conf_mat))
+err_rate_svm3
+```
+
+### SVM model: All features , exclude distance 
+
+```{r}
+set.seed(1234)
+trPerc <- 0.7
+sp <- sample(1:nrow(txn),as.integer(trPerc*nrow(txn)))
+tr <- txn[sp, ]
+ts <- txn[-sp, ]
+s <- svm( CnMem.1.01.Standing ~ . -Distance, tr)
+preds <- predict(s, ts)
+conf_mat <- table(ts$CnMem.1.01.Standing,preds)
+err_rate1 <- (1 - sum(diag(conf_mat))/sum(conf_mat))
+err_rate1
+```
+### SVM model with all features
+```{r}
+set.seed(1234)
+trPerc <- 0.7
+sp <- sample(1:nrow(txn),as.integer(trPerc*nrow(txn)))
+tr <- txn[sp, ]
+ts <- txn[-sp, ]
+s <- svm( CnMem.1.01.Standing ~ .  , tr)
+preds <- predict(s, ts)
+conf_mat <- table(ts$CnMem.1.01.Standing,preds)
+err_rate2 <- (1 - sum(diag(conf_mat))/sum(conf_mat))
+err_rate2
+```
+
+```{r}
+set.seed(1234)
+trPerc <- 0.7
+sp <- sample(1:nrow(txn),as.integer(trPerc*nrow(txn)))
+tr <- txn[sp, ]
+ts <- txn[-sp, ]
+s <- svm( CnMem.1.01.Standing ~ . -Distance -CnAttrCat.4.01.Description , tr)
+preds1 <- predict(s, ts)
+conf_mat <- table(ts$CnMem.1.01.Standing,preds1)
+err_rate3 <- (1 - sum(diag(conf_mat))/sum(conf_mat))
+err_rate3
+```
+
+```{r}
+set.seed(1234)
+trPerc <- 0.7
+sp <- sample(1:nrow(txn),as.integer(trPerc*nrow(txn)))
+tr4 <- txn[sp, ]
+ts4 <- txn[-sp, ]
+#s2 <- randomForest(response ~ ., tr2, ntree = 3000)
+s4 <- randomForest( CnMem.1.01.Standing ~ . -Distance -CnAttrCat.4.01.Description , tr4, ntree = 3000)
+preds4 <- predict(s4, ts4)
+conf_mat4 <- table(ts4$CnMem.1.01.Standing,preds4)
+err_rate4 <- (1 - sum(diag(conf_mat4))/sum(conf_mat4))
+err_rate4
+```
+
+``` {r}
+set.seed(1234)
+trPerc <- 0.75
+sp <- sample(1:nrow(txn),as.integer(trPerc*nrow(txn)))
+tr5 <- txn[sp, ]
+ts5 <- txn[-sp, ]
+s5 <- randomForest( CnMem.1.01.Standing ~ . -Distance -CnAttrCat.4.01.Description , tr5, ntree = 3000)
+preds5 <- predict(s5, ts5)
+conf_mat5 <- table(ts5$CnMem.1.01.Standing,preds5)
+err_rate5 <- (1 - sum(diag(conf_mat5))/sum(conf_mat5))
+err_rate5
+```
+### Error rate 1 and Error rate 3 performs best with the value of 0005295675
+### SVM with Visits and Consective years is even better at 0.0003
+
+### Use Classfication Trees for predicton
+
+``` {r}
+library(DMwR)
+set.seed(1234)
+trPerc <- 0.60
+sp <- sample(1:nrow(txn),as.integer(trPerc*nrow(txn)))
+tr6 <- txn[sp, ]
+ts6 <- txn[-sp, ] 
+ac <- rpartXse(CnMem.1.01.Standing ~ . -Visits -Events -NetAmt -CnMem.1.01.Consecutive.Years, tr6)
+ps <- predict(ac, ts6,type='class')
+mc <- table(ps, ts6$CnMem.1.01.Standing)
+err <- 100 * (1 - sum(diag(mc))/sum(mc))
+```
+
+ 
+``` {r}
+set.seed(1234)
+trPerc <- 0.70
+sp <- sample(1:nrow(txn),as.integer(trPerc*nrow(txn)))
+tr7 <- txn[sp, ]
+ts7 <- txn[-sp, ]
+s7 <- randomForest( CnMem.1.01.Standing ~ . -Visits -CnAttrCat.4.01.Description , tr5, ntree = 3000)
+preds7 <- predict(s7, ts7)
+conf_mat7 <- table(ts5$CnMem.1.01.Standing,preds7)
+err_rate7 <- (1 - sum(diag(conf_mat7))/sum(conf_mat7))
+err_rate7
+```
+
+### Random forest model with all significant variables removed
+``` {r}
+library(DMwR)
+set.seed(1234)
+trPerc <- 0.60
+sp <- sample(1:nrow(txn),as.integer(trPerc*nrow(txn)))
+tr8 <- txn[sp, ]
+ts8 <- txn[-sp, ] 
+ac8 <- randomForest(CnMem.1.01.Standing ~ . -Visits -Events -NetAmt -CnMem.1.01.Consecutive.Years, tr8)
+ps8 <- predict(ac8, ts8,type='class')
+mc8 <- table(ps, ts8$CnMem.1.01.Standing)
+err8 <- 100 * (1 - sum(diag(mc8))/sum(mc8))
+```
+
+## Model comparison
+
+``` {r}
+
+library(randomForest)
+library(e1071)
+
+res1 <- performanceEstimation(
+PredTask(CnMem.1.01.Standing ~ . , txn),
+c(workflowVariants(learner="svm"),
+workflowVariants(learner="rpartXse"),
+workflowVariants(learner="randomForest")),
+EstimationTask(metrics="err", method=Holdout(nReps=5,hldSz=0.3)))
+```
+
+``` {r}
+res2 <- performanceEstimation(
+PredTask(CnMem.1.01.Standing ~  Visits + CnMem.1.01.Consecutive.Years  , txn),
+c(workflowVariants(learner="svm"),
+workflowVariants(learner="rpartXse"),
+workflowVariants(learner="randomForest")),
+EstimationTask(metrics="err", method=Holdout(nReps=5,hldSz=0.3)))
+
+rankworkflows(res2,3)
+summary(res2)
+plot(res2)
+```
+## Observation and Analysis.
+
+res3 <- performanceEstimation(
+PredTask(response ~ .,german),
+Workflow("standardWF",learner="svm" ),
+HldSettings(nReps=1,hldSz=0.3))
+
+I performed the following modeling :
+
+  + SVM with full feature set : Error rate - 0.3
+  + SVM with reduced feature set : Error rate - 0.296
+  + Random Forest with full feature set : Error rate - 0.27
+  + Random Forest with reduced feature set: Error rate - 0.273
+  
+Error rate measures the proportion of those predictions that are incorrect. Hence smaller values indicate better accuracy. Random Forest with reduced feature set produced better results, based on the errror rate. 
+
+This is expected, as the Random Forests combines both sampling the cases and
+the predictors, together in a single method.
+
+Random Forests uses a set of tree-based models where each
+tree is obtained from a bootstrap sample of the original data and
+uses some form of random selection of variables during tree
+growth. 
+
+
+  + Expected cost for SVM with full feature set : 426
+  + Expected cost for svm with reduced feature set : 421
+  + Expected cost for Random Forest with full feature set : 338
+  + Expected cost for Random Forest with reduced feature set : 325
+  
+Based on the expected cost model, Random Forest with reduced feature set,
+has incured the least cost. This was expected, as this is the model with the
+lesser error rate

@@ -1,0 +1,296 @@
+####### Presplit iteration
+
+```{r}
+#### 1. Load data 
+
+##### Load base training/test dataset and ensure proper class assignments
+```{r}
+#train
+base.ps = read.csv("C:/Users/Joshua/Google Drive/MSBA/Capstone/Morton/Modeling/Presplit/presplit train.csv")
+
+base.ps$Memid = as.factor(base.ps$Memid)
+base.ps$Visits = as.numeric(base.ps$Visits)
+base.ps$Rental = as.numeric(base.ps$Rental)
+base.ps$Bday_party = as.numeric(base.ps$Bday_party)
+base.ps$CnBio.Age = as.numeric(base.ps$CnBio.Age)
+base.ps$CnMem.1.01.Consecutive.Years = as.numeric(base.ps$CnMem.1.01.Consecutive.Years)
+base.ps = subset(base.ps, select=-c(Expiration.Date))
+
+base.ps$CnMem.1.01.Standing = as.factor(base.ps$CnMem.1.01.Standing)
+class(base.ps$CnMem.1.01.Standing)
+
+#imp
+imp.ps = read.csv("C:/Users/Joshua/Google Drive/MSBA/Capstone/Morton/Modeling/Presplit/presplit test.csv")
+
+imp.ps$Memid = as.factor(imp.ps$Memid)
+imp.ps$Visits = as.numeric(imp.ps$Visits)
+imp.ps$Rental = as.numeric(imp.ps$Rental)
+imp.ps$Bday_party = as.numeric(imp.ps$Bday_party)
+imp.ps$CnBio.Age = as.numeric(imp.ps$CnBio.Age)
+imp.ps$CnMem.1.01.Consecutive.Years = as.numeric(imp.ps$CnMem.1.01.Consecutive.Years)
+imp.ps = subset(imp.ps, select=-c(Expiration.Date))
+
+imp.ps$CnMem.1.01.Standing = as.factor(imp.ps$CnMem.1.01.Standing)
+class(imp.ps$CnMem.1.01.Standing)
+```
+
+#### 2. Dealing with missing values
+
+##### Option 1: remove instances with missing values
+```{r}
+# train
+base.ps.sansage = subset(base.ps, select = -c(Age.Group, CnBio.Age))
+# Version 1 - excluding age variables, remove the few na instnaces in the Distance variable
+base.ps.excludeAge = base.ps.sansage[complete.cases(base.ps.sansage),]
+# version 2 - including age variables, remove all na instnaces (approx 50%)
+base.ps.includeAge = base.ps[complete.cases(base.ps),]
+# remove age and age group
+imp.ps.sansage = subset(imp.ps, select = -c(Age.Group, CnBio.Age))
+
+# imp
+# Version 1 - excluding age variables, remove the few na instnaces in the Distance variable
+imp.ps.excludeAge = imp.ps.sansage[complete.cases(imp.ps.sansage),]
+# version 2 - including age variables, remove all na instnaces (approx 50%)
+imp.ps.includeAge = imp.ps[complete.cases(imp.ps),]
+```
+
+##### remove Memid 
+```{r}
+# train
+base.ps.excludeAge = subset(base.ps.excludeAge, select=-c(Memid))
+base.ps.includeAge = subset(base.ps.includeAge, select=-c(Memid))
+
+# imp
+imp.ps.excludeAge = subset(imp.ps.excludeAge, select=-c(Memid))
+imp.ps.includeAge = subset(imp.ps.includeAge, select=-c(Memid))
+
+```
+
+> Accounting for missing values has resulted in the following data sets:
+
+ - Remove missing values from training set
+   - base.ps.excludeAge: excluding age variables and removing all na instances
+   - base.ps.includeAge: including age variables and removing all na instances
+
+ - Remove missing values from implementation set
+   - imp.ps.excludeAge: excluding age variables and removing all na instances
+   - imp.ps.includeAge: including age variables and removing all na instances
+
+#### 4. Apply transformations (boxcox, center, scale, pca)
+```{r}
+# train
+# first apply log transformations to numeric variables - only applied to distance as all other numeric variables contain a significant amount of zeros
+
+base.ps.excludeAge$Distance.log = log(base.ps.excludeAge$Distance)
+base.ps.includeAge$Distance.log = log(base.ps.includeAge$Distance)
+
+numerics.age2 = c("Visits", "NetAmt", "Rental", "Bday_party", "Events", "CnBio.Age", "CnMem.1.01.Consecutive.Years", "Distance", "Distance.log")
+numerics.noage2 = c("Visits", "NetAmt", "Rental", "Bday_party", "Events", "CnMem.1.01.Consecutive.Years", "Distance", "Distance.log")
+
+# reassess for skewnesss
+base.ps.excludeAge.N2 = base.ps.excludeAge[,numerics.noage2]
+base.ps.includeAge.N2 = base.ps.includeAge[,numerics.age2]
+
+# ignores categorical variables and only applies the preProcess function to numeric varaibles
+# essentially replace preProcess with ppWrapper
+# saves results as dataframe
+ppWrapper = function( x, excludeClasses=c("factor"), ... ) {
+    whichToExclude <- sapply( x, function(y) any(sapply(excludeClasses, function(excludeClass) is(y,excludeClass) )) )
+    processedMat <- predict( preProcess( x[!whichToExclude], ...), newdata=x[!whichToExclude] )
+    x[!whichToExclude] <- processedMat
+    x
+}
+
+library(caret)
+base.ps.excludeAge.Proc = ppWrapper(base.ps.excludeAge, method = c("BoxCox", "center", "scale","pca"))                                                             
+base.ps.includeAge.Proc = ppWrapper(base.ps.includeAge, method = c("BoxCox", "center", "scale","pca"))
+
+# remove distance since distance.log created
+base.ps.excludeAge.Proc2 = subset(base.ps.excludeAge.Proc, select=-c(Distance))                                                           
+base.ps.includeAge.Proc2 = subset(base.ps.includeAge.Proc, select=-c(Distance))  
+
+#imp
+
+# first apply log transformations to numeric variables - only applied to distance as all other numeric variables contain a significant amount of zeros
+
+imp.ps.excludeAge$Distance.log = log(imp.ps.excludeAge$Distance)
+imp.ps.includeAge$Distance.log = log(imp.ps.includeAge$Distance)
+
+# reassess for skewnesss
+imp.ps.excludeAge.N2 = imp.ps.excludeAge[,numerics.noage2]
+imp.ps.includeAge.N2 = imp.ps.includeAge[,numerics.age2]
+
+imp.ps.excludeAge.Proc = ppWrapper(imp.ps.excludeAge, method = c("BoxCox", "center", "scale","pca"))                                                             
+imp.ps.includeAge.Proc = ppWrapper(imp.ps.includeAge, method = c("BoxCox", "center", "scale","pca"))
+
+# remove distance since distance.log created
+imp.ps.excludeAge.Proc2 = subset(imp.ps.excludeAge.Proc, select=-c(Distance))                                                           
+imp.ps.includeAge.Proc2 = subset(imp.ps.includeAge.Proc, select=-c(Distance))  
+
+```
+
+> Transformations lowered skewness values. Created the following files with transformed numeric variables and original nominal variables:
+   - base.ps.excludeAge.Proc2                                                             
+   - base.ps.includeAge.Proc2
+
+> Transformations lowered skewness values. Created the following files with transformed numeric variables and original nominal variables:
+   - imp.ps.excludeAge.Proc2                                                             
+   - imp.ps.includeAge.Proc2
+   
+#### 3. Convert all categorical/nominal variables to numeric Dummy variables
+```{r}
+
+# train
+
+base.ps.excludeAge.Proc2$CnMem.1.01.Standing = as.numeric(base.ps.excludeAge.Proc2$CnMem.1.01.Standing) #convert target to numeric to prevent dummification
+a.ps = dummyVars("~ .", data=base.ps.excludeAge.Proc2, levelsOny=TRUE)
+base.ps.excludeAge.Proc.dummy = data.frame(predict(a.ps, newdata = base.ps.excludeAge.Proc2))
+base.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing = as.factor(base.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing)# convert back to factor
+base.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing = as.factor(ifelse(base.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing == "1", "0", "1"))
+
+base.ps.includeAge.Proc2$CnMem.1.01.Standing = as.numeric(base.ps.includeAge.Proc2$CnMem.1.01.Standing)
+b.ps = dummyVars("~ .", data=base.ps.includeAge.Proc2, levelsOny=TRUE)
+base.ps.includeAge.Proc.dummy = data.frame(predict(b.ps, newdata = base.ps.includeAge.Proc2))
+base.ps.includeAge.Proc.dummy$CnMem.1.01.Standing = as.factor(base.ps.includeAge.Proc.dummy$CnMem.1.01.Standing)
+base.ps.includeAge.Proc.dummy$CnMem.1.01.Standing = as.factor(ifelse(base.ps.includeAge.Proc.dummy$CnMem.1.01.Standing == "1", "0", "1"))
+#imp
+
+imp.ps.excludeAge.Proc2$CnMem.1.01.Standing = as.numeric(imp.ps.excludeAge.Proc2$CnMem.1.01.Standing) #convert target to numeric to prevent dummification
+
+a.ps.i = dummyVars("~ .", data=imp.ps.excludeAge.Proc2, levelsOny=TRUE)
+imp.ps.excludeAge.Proc.dummy = data.frame(predict(a.ps.i, newdata = imp.ps.excludeAge.Proc2))
+imp.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing = as.factor(imp.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing)# convert back to factor
+imp.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing = as.factor(ifelse(imp.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing == "1", "0", "1"))
+
+imp.ps.includeAge.Proc2$CnMem.1.01.Standing = as.numeric(imp.ps.includeAge.Proc2$CnMem.1.01.Standing)
+
+b.ps.i = dummyVars("~ .", data=imp.ps.includeAge.Proc2, levelsOny=TRUE)
+imp.ps.includeAge.Proc.dummy = data.frame(predict(b.ps.i, newdata = imp.ps.includeAge.Proc2))
+imp.ps.includeAge.Proc.dummy$CnMem.1.01.Standing = as.factor(imp.ps.includeAge.Proc.dummy$CnMem.1.01.Standing)
+imp.ps.includeAge.Proc.dummy$CnMem.1.01.Standing = as.factor(ifelse(imp.ps.includeAge.Proc.dummy$CnMem.1.01.Standing == "1", "0", "1"))
+
+# rerun to restore pre-dummy sets
+base.ps.excludeAge.Proc2 = subset(base.ps.excludeAge.Proc, select=-c(Distance))                                                           
+base.ps.includeAge.Proc2 = subset(base.ps.includeAge.Proc, select=-c(Distance))  
+imp.ps.excludeAge.Proc2 = subset(imp.ps.excludeAge.Proc, select=-c(Distance))                                                           
+imp.ps.includeAge.Proc2 = subset(imp.ps.includeAge.Proc, select=-c(Distance))  
+
+```
+
+> Created the following files with transformed numeric variables and dummified nominal variables:
+   - base.ps.excludeAge.Proc.dummy                                                             
+   - base.ps.includeAge.Proc.dummy
+
+> Created the following files with transformed numeric variables and dummified nominal variables:
+   - imp.ps.excludeAge.Proc.dummy                                                             
+   - imp.ps.includeAge.Proc.dummy
+   
+   
+#### 4. Train and eval model on preprocessed data sets
+```{r}
+library(pROC)
+library(RWeka)
+library(randomForest)
+library(C50)
+
+
+# remove membership types from training set that are not in imp data set
+str(base.ps.excludeAge.Proc.dummy)
+str(imp.ps.excludeAge.Proc.dummy)
+base.ps.excludeAge.Proc.dummy.rem = subset(base.ps.excludeAge.Proc.dummy, select = -c(CnMem.1.01.Cur.Category.description.2.YR.Family.Plus, CnMem.1.01.Cur.Category.description.Ginkgo.Circle, CnMem.1.01.Cur.Category.description.Retiree, CnMem.1.01.Cur.Category.description.Trustee,  CnBio.Constit.Code.Trustee ))
+
+#run j48
+J48.TRN.BpEPD = J48(CnMem.1.01.Standing ~ ., base.ps.excludeAge.Proc.dummy.rem)
+J48.TST.BpEPD = predict(J48.TRN.BpEPD, imp.ps.excludeAge.Proc.dummy, type="prob")
+
+imp.ps.excludeAge.Proc.dummy$J48prob = J48.TST.BpEPD[,"1"]
+J48.BpEPD.ROC = roc(response = imp.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing, predictor = imp.ps.excludeAge.Proc.dummy$J48prob, levels = rev(levels(imp.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing)))
+
+auc(J48.BpEPD.ROC)
+plot(J48.BpEPD.ROC, legacy.axes = TRUE)
+
+#run LMT
+LMT.TRN.BpEPD = LMT(CnMem.1.01.Standing ~ ., base.ps.excludeAge.Proc.dummy.rem)
+LMT.TST.BpEPD = predict(LMT.TRN.BpEPD, imp.ps.excludeAge.Proc.dummy, type="prob")
+
+imp.ps.excludeAge.Proc.dummy$LMTprob = LMT.TST.BpEPD[,"1"]
+LMT.BpEPD.ROC = roc(response = imp.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing, predictor = imp.ps.excludeAge.Proc.dummy$LMTprob, levels = rev(levels(imp.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing)))
+
+auc(LMT.BpEPD.ROC)
+plot(LMT.BpEPD.ROC, legacy.axes = TRUE)
+
+#run randomForest
+RF.TRN.BpEPD = randomForest(CnMem.1.01.Standing ~ ., base.ps.excludeAge.Proc.dummy.rem)
+RF.TST.BpEPD = predict(RF.TRN.BpEPD, imp.ps.excludeAge.Proc.dummy, type="prob")
+
+imp.ps.excludeAge.Proc.dummy$RFprob = RF.TST.BpEPD[,"1"]
+RF.BpEPD.ROC = roc(response = imp.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing, predictor = imp.ps.excludeAge.Proc.dummy$RFprob, levels = rev(levels(imp.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing)))
+
+auc(RF.BpEPD.ROC)
+plot(RF.BpEPD.ROC, legacy.axes = TRUE)
+
+#run C5.0
+C5.0.TRN.BpEPD = C5.0(CnMem.1.01.Standing ~ ., base.ps.excludeAge.Proc.dummy.rem)
+C5.0.TST.BpEPD = predict(C5.0.TRN.BpEPD, imp.ps.excludeAge.Proc.dummy, type="prob")
+
+imp.ps.excludeAge.Proc.dummy$C5.0prob = C5.0.TST.BpEPD[,"1"]
+C5.0.BpEPD.ROC = roc(response = imp.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing, predictor = imp.ps.excludeAge.Proc.dummy$C5.0prob, levels = rev(levels(imp.ps.excludeAge.Proc.dummy$CnMem.1.01.Standing)))
+
+auc(C5.0.BpEPD.ROC)
+plot(C5.0.BpEPD.ROC, legacy.axes = TRUE)
+
+
+```
+
+#### 5. Train and eval model on un-preprocessed (except missing values) data sets
+ 
+```{r}
+
+# align nominal predictor levels (i.e. remove levels/instances from training set not in test set)
+
+str(base.ps.excludeAge)
+str(imp.ps.excludeAge)
+# CnBio.Constit.Code
+levels(imp.ps.excludeAge$CnBio.Constit.Code)
+levels(base.ps.excludeAge$CnBio.Constit.Code) # remove Trustee
+levels(base.ps.excludeAge$CnMem.1.01.Cur.Category.description)
+levels(imp.ps.excludeAge$CnMem.1.01.Cur.Category.description) # remove 2 YR Family Plus, Ginkgo Circle, Retiree, Trustee
+
+base.ps.excludeAge.rem = base.ps.excludeAge[!(base.ps.excludeAge$CnBio.Constit.Code %in% c("Trustee") | base.ps.excludeAge$CnMem.1.01.Cur.Category.description %in% c("2 YR Family Plus", "Ginkgo Circle", "Retiree", "Trustee")),]
+
+# excludeage dataset
+# j48
+J48.TRN.BpE = J48(CnMem.1.01.Standing ~ ., base.ps.excludeAge.rem) # train on test set
+J48.TST.BpE = predict(J48.TRN.BpE, imp.ps.excludeAge, type="prob") # apply model on holdout set to get pred class and class probs
+
+J48prob = J48.TST.BpE[,"1"] #grab the positive class, i.e. 1/churn
+J48.BpE.ROC = roc(response = imp.ps.excludeAge$CnMem.1.01.Standing, predictor = J48prob)
+confusionMatrix(data = J48prob, reference = imp.ps.excludeAge$CnMem.1.01.Standing, positive="1")
+auc(J48.BpE.ROC)
+plot(J48.BpE.ROC, legacy.axes = TRUE)
+
+#j48 - weka verification
+BpE.eval_J48 = evaluate_Weka_classifier(J48.TRN.BpE, imp.ps.excludeAge, class=TRUE)
+BpE.eval_J48
+
+
+
+# includeage dataset
+# j48
+J48.TRN.BpI = J48(CnMem.1.01.Standing ~ ., base.ps.includeAge) # train on test set
+J48.TST.BpI = predict(J48.TRN.BpI, imp.ps.includeAge, type="prob") # apply model on holdout set
+
+J48prob.I = J48.TST.BpI[,"1"]
+J48.BpI.ROC = roc(response = imp.ps.includeAge$CnMem.1.01.Standing, predictor = J48prob.I)
+confusionMatrix(data = J48prob.I, reference = imp.ps.includeAge$CnMem.1.01.Standing, positive="1")
+auc(J48.BpI.ROC)
+plot(J48.BpI.ROC, legacy.axes = TRUE)
+
+#j48 - weka verification
+BpI.eval_J48 = evaluate_Weka_classifier(J48.TRN.BpI, imp.ps.includeAge, class=TRUE)
+BpI.eval_J48
+
+
+
+
+

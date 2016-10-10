@@ -1,0 +1,124 @@
+# Analysis of Feature sets for Churn reduction
+========================================================
+Author  : Ravi Sangili
+Date    : 01/22/2014
+
+## Data import of the TRaining Features set:
+
+### List of members with memberships renewl due: Nov 2013 - Oct 2014
+### Target label : No Churn - Members who renewed
+### Target label : Churn    - Members who did not renew within 2 months of expiry
+
+
+```{r}
+if (!require("Hmisc")) {
+  install.packages("Hmisc", repos="http://cran.rstudio.com/") 
+  library('Hmisc')
+}
+if (!require("DMwR")) {
+  install.packages("DMwR", repos="http://cran.rstudio.com/") 
+  library('DMwR')
+}
+
+txn <- read.csv("feature for training.csv",header=TRUE, sep=",",stringsAsFactors=FALSE)
+
+```
+
+### Data Cleanup - Identify features with NA
+``` {r}
+nrow(txn[is.na(txn$CnBio.Age),])
+
+nrow( txn[is.na(txn$Distance),])
+
+nrow( txn[is.na(txn$Visit),])
+
+nrow( txn[is.na(txn$NetAmt),])
+
+nrow( txn[is.na(txn$CnBio.Constit.Code),])
+
+```
+
+
+#### Remove the record with no zip code or distance
+
+``` {r}
+
+
+txn <- txn[-is.na(txn$Distance),]
+
+``` 
+
+#### Fill the Attr 5.01 with "no donor" and Attr 4.01 with "no recipient", if blank
+
+``` {r}
+mem_donor_blank <- txn[!(grepl("Donor*",txn$CnAttrCat.5.01.Description)),]
+
+mem_donor_blank$CnAttrCat.5.01.Description <- c("no donor")
+
+txn[(!grepl("Donor",txn$CnAttrCat.5.01.Description)), ]  <- mem_donor_blank$CnAttrCat.5.01.Description 
+
+txn[(!grepl("Donor",txn$CnAttrCat.5.01.Description)),c('CnAttrCat.5.01.Description') ]  <- mem_donor_blank$CnAttrCat.5.01.Description 
+
+
+mem_donor <- txn[grepl("Donor*",txn$CnAttrCat.5.01.Description),]
+
+mem_donor_churn <- mem_donor[mem_donor$CnMem.1.01.Standing == "churn",]
+
+mem_donor_nochurn <- mem_donor[mem_donor$CnMem.1.01.Standing == "no churn",]
+
+donor_recept <- txn[grepl("Recipient*",txn$CnAttrCat.4.01.Description),]
+
+donor_recept_blank <- txn[!grepl("Recipient",txn$CnAttrCat.4.01.Description),]
+
+donor_recept_blank$CnAttrCat.4.01.Description <- c("no recipient")
+
+txn[(!grepl("Recipient",txn$CnAttrCat.4.01.Description)),c('CnAttrCat.4.01.Description') ]  <-  donor_recept_blank$CnAttrCat.4.01.Description 
+
+donor_recept_churn <- donor_recept[donor_recept$CnMem.1.01.Standing == "churn",]
+
+# mem_donor_blank <- txn[!(grepl("Donor*",txn$CnAttrCat.5.01.Description)),]
+
+# mem_donor_blank$CnAttrCat.5.01.Description <- c("no donor")
+ 
+
+```
+
+### Summary statistics of significant features
+
+``` {r}
+
+summary(txn$Events)
+summary(txn$Visits)
+summary (txn$NetAmt)
+summary (txn$Distance)
+
+```
+
+### Summary statistics for independent variables
+
+``` {r}
+
+boxplot(txn$Events)
+hist(txn$CnBio.Age)
+hist(txn$Events)
+hist(txn$Distance)
+```
+
+### Graphs showing relationship between dependent variable and independent variables
+
+``` {r}
+histogram(~NetAmt|CnMem.1.01.Standing,txn,na.rm=T)
+histogram(~Events|CnMem.1.01.Standing,txn,na.rm=T)
+bwplot(CnMem.1.01.Standing~Visits,data=txn)
+bwplot(CnMem.1.01.Standing~Visits,data=txn,xlim=1:100)
+bwplot(CnMem.1.01.Standing~Events,data=txn)
+bwplot(CnMem.1.01.Standing~NetAmt,data=txn,xlim=1:1500)
+bwplot(CnMem.1.01.Standing~NetAmt,data=txn,xlim=1:500)
+xyplot(Distance ~ Visits |CnMem.1.01.Standing ,txn,ylim=0:100,xlim=0:25)
+xyplot(Distance ~ Visits |CnMem.1.01.Standing ,txn)
+```
+
+
+``` {r}
+write.csv(feature_df, "C:/Ravi/capstone/clean features.csv")
+```

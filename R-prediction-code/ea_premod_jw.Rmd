@@ -1,0 +1,63 @@
+###Energy Analytics - Assignment 3
+#### James Weaver - jw3591 - Feb 2015
+
+*1. Import the data in R and plot the OntarioDemand (column D) and the respective histogram.*
+
+```{r echo = FALSE, message = FALSE, include=FALSE}
+library(psych)
+library(ggplot2)
+library(tseries)
+library(stats)
+
+od <- read.csv("Desktop/MSBA/Module 4/Energy Analytics/OntarioDemand.csv")
+#od <- read.csv("/Users/jamieweaver/Dropbox//NYU mod4/Energy Analytics/OntarioDemand.csv")
+days <- length(unique(od$Date))
+od$Date <- as.Date(od$Date, "%d-%b-%y")
+```
+
+The time series data consist of `r dim(od)[1]` observarions characterized by `r dim(od)[2]` attributes. Each observation represents 1 of 24 hours in a day and there are `r days` days in the time series range `r min(od$Date)` to `r max(od$Date)`. Each observation includes energy demand information for the total market and for Ontario specifically. Figure 1 displays TIME SERIES PLOT, SDs,
+
+Over this time period, the average hourly energy demand in Ontario was `r format(round(mean(od$Ontario.Demand, 0)), scientific=FALSE)` kWh with standard deviation `r round(sd(od$Ontario.Demand), 0)` and is approximately normally distributed (Figure 2) and confirmed by the Kolmogorov-Smirnov test (p<0.001).
+
+**Figure 1. Average Ontario energy demand per hour, 5/2002-3/2004**
+```{r, echo = FALSE, message=FALSE}
+od.mean <- aggregate(Ontario.Demand ~ Date, od, mean)
+names(od.mean) <- c("Date", "od.mean")
+od.sd <- aggregate(Ontario.Demand ~ Date, od, sd)
+names(od.sd) <- c("Date", "od.sd")
+od.sd <- od.sd[2]
+od.agg <- data.frame(od.mean, od.sd$od.sd)
+```
+
+**Figure 2. Mean and SD daily Ontario energy demand (kWh)**
+```{r, echo = FALSE, message=FALSE}
+od.ts <- ts(od.agg, freq=365, start=c(2002, 5))
+plot.ts(od.ts[, c(2:3)], plot.type="single", ylab=NULL, xlab="Date")
+```
+
+**Figure 2. Distribtion of Ontario energy demand per hour, 5/2002-3/2004**
+```{r, echo = FALSE, message=FALSE}
+h <- hist(od$Ontario.Demand, breaks=50, col="gray", main=NULL, xlab="Ontario energy demand (kWh)")
+xfit <- seq(min(od$Ontario.Demand), max(od$Ontario.Demand), length=50)
+yfit <- dnorm(xfit, mean=mean(od$Ontario.Demand), sd=sd(od$Ontario.Demand))
+yfit <- yfit*diff(h$mids[1:2])*length(od$Ontario.Demand) 
+lines(xfit, yfit, lwd=2)
+```
+
+
+
+*2. Calculate the average of each day and plot the standard deviation.*
+
+*3. Use the dataset to forecast (using time series) the daily demand pattern following the steps below:*
+*a. Select your hold out sample as the last month of the observations*
+*b. Estimate your ARIMA or ARMA model parameters on the rest of your data set*
+
+4. Is it an ARIMA or an ARMA model more suitable? Please justify your choice. What are the
+best parameters for the time series model? (10 points)
+5. Calculate the predictive accuracy for every day on the test set (in terms of RMSE and
+MAPE). (20 points)
+6. Can you suggest an alternative method that will be more accurate and flexible to any
+potential exogenous shocks in the market? Justify your choice. (10 points)
+
+TEST FOR
+TRANSFORMATIONS UNNECESSARY local random variations are consistent over time and generally symmetric in appearance, NO NEED TO STATIONARIZE

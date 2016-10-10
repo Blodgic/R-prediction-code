@@ -1,0 +1,572 @@
+---
+title: Leaf modeling
+author: "Josh Lee"
+date: "Saturday, January 24, 2015"
+output: html_document
+---
+
+#### 1. Load data 
+
+##### Load base training/test dataset and ensure proper class assignments
+```{r}
+base.tt = read.csv("C:/Users/Joshua/Google Drive/MSBA/Capstone/Morton/Modeling/tt123.csv")
+# visually verify import
+View(base.tt)
+nrow(base.tt)
+str(base.tt) 
+base.tt$Memid = as.factor(base.tt$Memid)
+base.tt$Visits = as.numeric(base.tt$Visits)
+base.tt$Rental = as.numeric(base.tt$Rental)
+base.tt$Bday_party = as.numeric(base.tt$Bday_party)
+base.tt$CnBio.Age = as.numeric(base.tt$CnBio.Age)
+base.tt$CnMem.1.01.Consecutive.Years = as.numeric(base.tt$CnMem.1.01.Consecutive.Years)
+
+# make adjustments - convert na values in donation field to 0; the assumption made here is that if no donation trans were found in cp data, then they made no donations.  na implies it's a missing value, which under this assumption it is not.
+base.tt$donations[is.na(base.tt$donations)] = 0
+
+# set convert target/response value to factor.  but may need to conver to numeric for some models won't accept factor values
+base.tt$CnMem.1.01.Standing = ifelse(base.tt$CnMem.1.01.Standing == "churn", "1", "0")
+base.tt$CnMem.1.01.Standing = as.factor(base.tt$CnMem.1.01.Standing)
+levels(base.tt$CnMem.1.01.Standing)
+
+```
+
+#### 2. Dealing with missing values
+
+##### Option 1: remove instances with missing values
+```{r}
+# see how many instnaces have missing values 
+nrow(base.tt[!complete.cases(base.tt),]) / nrow(base.tt) # 49% have missing values
+
+# function to summarize NAs in each column of dataframe
+checkna <- function(dataframe) {
+  m <- sapply(dataframe, function(x) {
+		data.frame(
+			All_Records=length(x), 
+      NAs=sum(is.na(x)), 
+			NAPercent=sum(is.na(x))/length(x)
+		)
+	})
+	d <- data.frame(t(m))
+	d <- sapply(d, unlist)
+	d <- as.data.frame(d)
+	d$variable <- row.names(d)
+	row.names(d) <- NULL
+	d <- cbind(d[ncol(d)],d[-ncol(d)])
+	return(d[order(d$NAPercent), ])
+}
+
+checkna(base.tt) # shows that age and age group accounts for nearly all na values.  
+
+# remove age and age group
+base.tt.sansage = subset(base.tt, select = -c(Age.Group, CnBio.Age))
+checkna(base.tt.sansage)
+
+# Version 1 - excluding age variables, remove the few na instnaces in the Distance variable
+base.tt.excludeAge = base.tt.sansage[complete.cases(base.tt.sansage),]
+checkna(base.tt.excludeAge)
+
+# version 2 - including age variables, remove all na instnaces (approx 50%)
+base.tt.includeAge = base.tt[complete.cases(base.tt),]
+checkna(base.tt.includeAge)
+```
+
+> Determined that the vast majority of NA values were attributable to the Age variables and a few instances to the Distance variable.  Hence, created two versions of the file with NA values ommitted: 1) excluding age variables and 2) including age variables.  The version including age variables resulted in approx half of the instances being removed.  The version excluding age variables retained most of the instances, but obviously lost the age variables as predictors. 
+
+##### Option 2: impute missing values
+
+```{r}
+
+# Fill-in the unknowns with the most common value (a statistic of centrality)
+library(DMwR)
+base.tt.CI = centralImputation(base.tt)
+checkna(base.tt.CI)
+
+# Fill-in with the most common value on the cases that are more "similar" to the one with unknowns
+base.tt.KI = knnImputation(base.tt, k=10)
+checkna(base.tt.KI)
+```
+
+##### Option 3: do nothing and allow model to account for missing values (only works for certain tree models)
+
+```{r}
+# n/a - use base.tt
+```
+
+##### remove Memid 
+```{r}
+base.tt.excludeAge = subset(base.tt.excludeAge, select=-c(Memid))
+base.tt.includeAge = subset(base.tt.includeAge, select=-c(Memid))
+base.tt.CI = subset(base.tt.CI, select=-c(Memid))
+base.tt.KI = subset(base.tt.KI, select=-c(Memid))
+
+str(base.tt.excludeAge)
+
+```
+
+
+> Accounting for missing values has resulted in the following data sets:
+
+ - Option 1: remove missing values
+   - base.tt.excludeAge: excluding age variables and removing all na instances
+   - base.tt.includeAge: including age variables and removing all na instances
+
+ - Option 2: impute values
+   - base.tt.CI: Fill-in the unknowns with the most common value
+   - base.tt.KI: Fill-in with the most common value on the cases that are more "similar" to the one with unknowns 
+  
+ - Option 3: do nothing and allow models to account for missing values
+   - base.tt 
+
+
+
+#### 3. skewness and outliers (numerical variables)
+
+##### analyze for skewness
+```{r}
+# identify the continuous varibles to measure skewness: Visits, NetAmt, Rental, Bday_party, Events, CnMem.1.01.Consecutive.Years
+
+numerics.age = c("Visits", "NetAmt", "Rental", "Bday_party", "Events", "CnBio.Age", "CnMem.1.01.Consecutive.Years", "Distance")
+numerics.noage = c("Visits", "NetAmt", "Rental", "Bday_party", "Events", "CnMem.1.01.Consecutive.Years", "Distance")
+
+base.tt.excludeAge.N = base.tt.excludeAge[,numerics.noage]
+base.tt.includeAge.N = base.tt.includeAge[,numerics.age]
+base.tt.CI.N = base.tt.CI[,numerics.age]
+base.tt.KI.N = base.tt.KI[,numerics.age]
+base.tt.N = base.tt[,numerics.age]
+
+library(e1071)
+skewness.INAge = apply(base.tt.includeAge.N, 2, skewness)
+skewness.INAge
+skewness.EXAge = apply(base.tt.excludeAge.N, 2, skewness)
+skewness.EXAge
+skewness.CI = apply(base.tt.CI.N, 2, skewness)
+skewness.CI
+skewness.KI = apply(base.tt.KI.N, 2, skewness)
+skewness.KI
+skewness.base = apply(base.tt.N, 2, skewness)
+skewness.base
+```
+
+>  Analysis indicates significant skewness for all numeric variables in all versions of the base training/test data set (i.e. including age variables, excluding age variables).  Transformations are required.
+
+
+#### 4. Apply transformations (boxcox, center, scale, pca)
+```{r}
+
+# first apply log transformations to numeric variables - only applied to distance as all other numeric variables contain a significant amount of zeros
+
+base.tt.excludeAge$Distance.log = log(base.tt.excludeAge$Distance)
+base.tt.includeAge$Distance.log = log(base.tt.includeAge$Distance)
+base.tt.CI$Distance.log = log(base.tt.CI$Distance)
+base.tt.KI$Distance.log = log(base.tt.KI$Distance)
+base.tt$Distance.log = log(base.tt$Distance)
+
+numerics.age2 = c("Visits", "NetAmt", "Rental", "Bday_party", "Events", "CnBio.Age", "CnMem.1.01.Consecutive.Years", "Distance", "Distance.log")
+numerics.noage2 = c("Visits", "NetAmt", "Rental", "Bday_party", "Events", "CnMem.1.01.Consecutive.Years", "Distance", "Distance.log")
+
+# reassess for skewnesss
+base.tt.excludeAge.N2 = base.tt.excludeAge[,numerics.noage2]
+base.tt.includeAge.N2 = base.tt.includeAge[,numerics.age2]
+base.tt.CI.N2 = base.tt.CI[,numerics.age2]
+base.tt.KI.N2 = base.tt.KI[,numerics.age2]
+base.tt.N2 = base.tt[,numerics.age2]
+
+library(e1071)
+skewness.INAge = apply(base.tt.includeAge.N2, 2, skewness)
+skewness.INAge
+skewness.EXAge = apply(base.tt.excludeAge.N2, 2, skewness)
+skewness.EXAge
+skewness.CI = apply(base.tt.CI.N2, 2, skewness)
+skewness.CI
+skewness.KI = apply(base.tt.KI.N2, 2, skewness)
+skewness.KI
+skewness.base = apply(base.tt.N2, 2, skewness)
+skewness.base
+
+# ignores categorical variables and only applies the preProcess function to numeric varaibles
+# essentially replace preProcess with ppWrapper
+# saves results as dataframe, which is awesome
+ppWrapper = function( x, excludeClasses=c("factor"), ... ) {
+    whichToExclude <- sapply( x, function(y) any(sapply(excludeClasses, function(excludeClass) is(y,excludeClass) )) )
+    processedMat <- predict( preProcess( x[!whichToExclude], ...), newdata=x[!whichToExclude] )
+    x[!whichToExclude] <- processedMat
+    x
+}
+
+library(caret)
+base.tt.excludeAge.Proc = ppWrapper(base.tt.excludeAge, method = c("BoxCox", "center", "scale","pca"))                                                             
+base.tt.includeAge.Proc = ppWrapper(base.tt.includeAge, method = c("BoxCox", "center", "scale","pca"))
+base.tt.CI.Proc = ppWrapper(base.tt.CI, method = c("BoxCox", "center", "scale","pca"))
+base.tt.KI.Proc = ppWrapper(base.tt.KI, method = c("BoxCox", "center", "scale","pca"))
+base.tt.Proc = ppWrapper(base.tt, method = c("BoxCox", "center", "scale","pca"))
+
+# recheck skewnewss - post-tranformations
+library(e1071)
+skewness.EXAge.Proc = apply(base.tt.excludeAge.Proc[,numerics.noage2], 2, skewness)
+skewness.EXAge.Proc
+skewness.InAge.Proc = apply(base.tt.includeAge.Proc[,numerics.age2], 2, skewness)
+skewness.InAge.Proc
+skewness.CI.Proc = apply(base.tt.CI.Proc[,numerics.age2], 2, skewness)
+skewness.CI.Proc
+skewness.KI.Proc = apply(base.tt.KI.Proc[,numerics.age2], 2, skewness)
+skewness.KI.Proc
+skewness.Proc = apply(base.tt.Proc[,numerics.age2], 2, skewness)
+skewness.Proc
+
+
+# remove distance since distance.log created
+base.tt.excludeAge.Proc2 = subset(base.tt.excludeAge.Proc, select=-c(Distance))                                                           
+base.tt.includeAge.Proc2 = subset(base.tt.includeAge.Proc, select=-c(Distance))  
+base.tt.CI.Proc2 = subset(base.tt.CI.Proc, select=-c(Distance))  
+base.tt.KI.Proc2 = subset(base.tt.KI.Proc, select=-c(Distance))  
+base.tt.Proc2 = subset(base.tt.Proc, select=-c(Distance))  
+
+```
+
+> Transformations lowered skewness values. Created the following files with transformed numeric variables and original nominal variables:
+   - base.tt.excludeAge.Proc2                                                             
+   - base.tt.includeAge.Proc2
+   - base.tt.CI.Proc2
+   - base.tt.KI.Proc2
+
+#### 5. Convert all categorical/nominal variables to numeric Dummy variables
+```{r}
+# this is necessary to perform many of the data transformations such as normalize and boxcox.  
+# for certain classification models, this dummmy conversion may not be the best, so keep in mind...
+
+library(caret)
+base.tt.excludeAge.Proc2$CnMem.1.01.Standing = as.numeric(base.tt.excludeAge.Proc2$CnMem.1.01.Standing) #convert target to numeric to prevent dummification
+a = dummyVars("~ .", data=base.tt.excludeAge.Proc2, levelsOny=TRUE)
+base.tt.excludeAge.Proc.dummy = data.frame(predict(a, newdata = base.tt.excludeAge.Proc2))
+base.tt.excludeAge.Proc.dummy$CnMem.1.01.Standing = as.factor(base.tt.excludeAge.Proc.dummy$CnMem.1.01.Standing)# convert back to factor 
+base.tt.excludeAge.Proc.dummy$CnMem.1.01.Standing = as.factor(ifelse(base.tt.excludeAge.Proc.dummy$CnMem.1.01.Standing == "1", "0", "1"))
+
+base.tt.includeAge.Proc2$CnMem.1.01.Standing = as.numeric(base.tt.includeAge.Proc2$CnMem.1.01.Standing)
+b = dummyVars("~ .", data=base.tt.includeAge.Proc2, levelsOny=TRUE)
+base.tt.includeAge.Proc.dummy = data.frame(predict(b, newdata = base.tt.includeAge.Proc2))
+base.tt.includeAge.Proc.dummy$CnMem.1.01.Standing = as.factor(base.tt.includeAge.Proc.dummy$CnMem.1.01.Standing)
+base.tt.includeAge.Proc.dummy$CnMem.1.01.Standing = as.factor(ifelse(base.tt.includeAge.Proc.dummy$CnMem.1.01.Standing == "1", "0", "1"))
+
+base.tt.CI.Proc2$CnMem.1.01.Standing = as.numeric(base.tt.CI.Proc2$CnMem.1.01.Standing)
+c = dummyVars("~ .", data=base.tt.CI.Proc2, levelsOny=TRUE)
+base.tt.CI.Proc.dummy = data.frame(predict(c, newdata = base.tt.CI.Proc2))
+base.tt.CI.Proc.dummy$CnMem.1.01.Standing = as.factor(base.tt.CI.Proc.dummy$CnMem.1.01.Standing)
+base.tt.CI.Proc.dummy$CnMem.1.01.Standing = as.factor(ifelse(base.tt.CI.Proc.dummy$CnMem.1.01.Standing == "1", "0", "1"))
+
+base.tt.KI.Proc2$CnMem.1.01.Standing = as.numeric(base.tt.KI.Proc2$CnMem.1.01.Standing)
+d = dummyVars("~ .", data=base.tt.KI.Proc2, levelsOny=TRUE)
+base.tt.KI.Proc.dummy = data.frame(predict(d, newdata = base.tt.KI.Proc2))
+base.tt.KI.Proc.dummy$CnMem.1.01.Standing = as.factor(base.tt.KI.Proc.dummy$CnMem.1.01.Standing)
+base.tt.KI.Proc.dummy$CnMem.1.01.Standing = as.factor(ifelse(base.tt.KI.Proc.dummy$CnMem.1.01.Standing == "1", "0", "1"))
+
+
+# just rerun this to restore the non-dummy sets
+base.tt.excludeAge.Proc2 = subset(base.tt.excludeAge.Proc, select=-c(Distance))                                                           
+base.tt.includeAge.Proc2 = subset(base.tt.includeAge.Proc, select=-c(Distance))  
+base.tt.CI.Proc2 = subset(base.tt.CI.Proc, select=-c(Distance))  
+base.tt.KI.Proc2 = subset(base.tt.KI.Proc, select=-c(Distance))  
+base.tt.Proc2 = subset(base.tt.Proc, select=-c(Distance)) 
+
+```
+
+> Created the following files with transformed numeric variables and dummified nominal variables:
+   - base.tt.excludeAge.Proc.dummy                                                             
+   - base.tt.includeAge.Proc.dummy
+   - base.tt.CI.Proc.dummy
+   - base.tt.KI.Proc.dummy
+
+
+#### 6a. Data Splitting - holdouts and auc on Dummy sets
+```{r}
+#### Dummy sets - excludeAge
+
+library(caret)
+# simple 60/40 random sampling splitting based on target
+set.seed(777)
+trainIndex = createDataPartition(base.tt.excludeAge.Proc.dummy$CnMem.1.01.Standing, p=.6, list=FALSE,times=1)
+
+BTEPD.TRN = base.tt.excludeAge.Proc.dummy[trainIndex,]
+BTEPD.TST = base.tt.excludeAge.Proc.dummy[-trainIndex,]
+
+#j48
+library(pROC)
+library(RWeka)
+J48.TRN.BTEPD = J48(CnMem.1.01.Standing ~ ., BTEPD.TRN) # train on test set
+J48.TST.BTEPD = predict(J48.TRN.BTEPD, BTEPD.TST, type="prob") # apply model on holdout set to get pred class and class
+
+BTEPD.TST$J48prob = J48.TST.BTEPD[,"1"]
+J48.BTEPD.ROC = roc(response = BTEPD.TST$CnMem.1.01.Standing, predictor = BTEPD.TST$J48prob)
+auc(J48.BTEPD.ROC)
+ci.roc(J48.BTEPD.ROC)
+plot(J48.BTEPD.ROC, legacy.axes = TRUE)
+
+#j48 - weka verification
+library(partykit)
+#plot(J48.TRN.BTEPD)
+eval_J48.BTEPD = evaluate_Weka_classifier(J48.TRN.BTEPD, BTEPD.TST, class=TRUE)
+eval_J48.BTEPD
+
+#randomForest
+library(randomForest)
+rf.TRN.BTEPD = randomForest(CnMem.1.01.Standing ~ ., BTEPD.TRN)
+rf.TST.BTEPD = predict(rf.TRN.BTEPD, BTEPD.TST, type="prob")
+
+BTEPD.TST$rfprob = rf.TST.BTEPD[,"1"]
+rf.BTEPD.ROC = roc(response = BTEPD.TST$CnMem.1.01.Standing, predictor = BTEPD.TST$rfprob)
+auc(rf.BTEPD.ROC)
+ci.roc(rf.BTEPD.ROC)
+plot(rf.BTEPD.ROC, legacy.axes = TRUE)
+
+#svm
+library(kernlab)
+svm.TRN.BTEPD = ksvm(CnMem.1.01.Standing ~ ., BTEPD.TRN, prob.model=TRUE)
+svm.TST.BTEPD = predict(svm.TRN.BTEPD, BTEPD.TST, type="prob")
+
+BTEPD.TST$svmprob = svm.TST.BTEPD[,"1"]
+svm.BTEPD.ROC = roc(response = BTEPD.TST$CnMem.1.01.Standing, predictor = BTEPD.TST$svmprob)
+auc(svm.BTEPD.ROC)
+ci.roc(svm.BTEPD.ROC)
+plot(svm.BTEPD.ROC, legacy.axes = TRUE)
+
+##### Dummy sets - includeAge
+
+set.seed(777)
+trainIndex.i = createDataPartition(base.tt.includeAge.Proc.dummy$CnMem.1.01.Standing, p=.6, list=FALSE,times=1)
+
+BTiPD.TRN = base.tt.includeAge.Proc.dummy[trainIndex.i,]
+BTiPD.TST = base.tt.includeAge.Proc.dummy[-trainIndex.i,]
+
+#j48
+J48.TRN.BTiPD = J48(CnMem.1.01.Standing ~ ., BTiPD.TRN) # train on test set
+J48.TST.BTiPD = predict(J48.TRN.BTiPD, BTiPD.TST, type="prob") # apply model on holdout set to get pred class and class
+
+BTiPD.TST$J48prob = J48.TST.BTiPD[,"1"]
+J48.BTiPD.ROC = roc(response = BTiPD.TST$CnMem.1.01.Standing, predictor = BTiPD.TST$J48prob)
+auc(J48.BTiPD.ROC)
+ci.roc(J48.BTiPD.ROC)
+plot(J48.BTiPD.ROC, legacy.axes = TRUE)
+
+#j48 - weka verification
+library(partykit)
+#plot(J48.TRN.BTiPD)
+eval_J48.BTiPD = evaluate_Weka_classifier(J48.TRN.BTiPD, BTiPD.TST, class=TRUE)
+eval_J48.BTiPD
+
+##### Dummy sets - CI imputation
+
+set.seed(777)
+trainIndex.ci = createDataPartition(base.tt.CI.Proc.dummy$CnMem.1.01.Standing, p=.6, list=FALSE,times=1)
+
+BTciPD.TRN = base.tt.CI.Proc.dummy[trainIndex.ci,]
+BTciPD.TST = base.tt.CI.Proc.dummy[-trainIndex.ci,]
+
+#j48
+J48.TRN.BTciPD = J48(CnMem.1.01.Standing ~ ., BTciPD.TRN) # train on test set
+J48.TST.BTciPD = predict(J48.TRN.BTciPD, BTciPD.TST, type="prob") # apply model on holdout set to get pred class and class
+
+BTciPD.TST$J48prob = J48.TST.BTciPD[,"1"]
+J48.BTciPD.ROC = roc(response = BTciPD.TST$CnMem.1.01.Standing, predictor = BTciPD.TST$J48prob)
+auc(J48.BTciPD.ROC)
+ci.roc(J48.BTciPD.ROC)
+plot(J48.BTciPD.ROC, legacy.axes = TRUE)
+
+#j48 - weka verification
+library(partykit)
+#plot(J48.TRN.BTciPD)
+eval_J48.BTciPD = evaluate_Weka_classifier(J48.TRN.BTciPD, BTciPD.TST, class=TRUE)
+eval_J48.BTciPD
+
+##### Dummy sets - KI imputation
+
+set.seed(777)
+trainIndex.ki = createDataPartition(base.tt.KI.Proc.dummy$CnMem.1.01.Standing, p=.6, list=FALSE,times=1)
+
+BTkiPD.TRN = base.tt.CI.Proc.dummy[trainIndex.ci,]
+BTkiPD.TST = base.tt.CI.Proc.dummy[-trainIndex.ci,]
+
+#j48
+J48.TRN.BTkiPD = J48(CnMem.1.01.Standing ~ ., BTkiPD.TRN) # train on test set
+J48.TST.BTkiPD = predict(J48.TRN.BTkiPD, BTkiPD.TST, type="prob") # apply model on holdout set to get pred class and class
+
+BTkiPD.TST$J48prob = J48.TST.BTkiPD[,"1"]
+J48.BTkiPD.ROC = roc(response = BTkiPD.TST$CnMem.1.01.Standing, predictor = BTkiPD.TST$J48prob)
+auc(J48.BTkiPD.ROC)
+ci.roc(J48.BTkiPD.ROC)
+plot(J48.BTkiPD.ROC, legacy.axes = TRUE)
+
+#j48 - weka verification
+library(partykit)
+#plot(J48.TRN.BTkiPD)
+eval_J48.BTkiPD = evaluate_Weka_classifier(J48.TRN.BTkiPD, BTkiPD.TST, class=TRUE)
+eval_J48.BTkiPD
+
+
+
+```
+
+#### 6b. Data Splitting - holdouts and auc on Nondummy sets
+```{r}
+#### Nondummy sets - excludeAge
+
+library(caret)
+# simple 60/40 random sampling splitting based on target
+set.seed(777)
+trainIndex.n = createDataPartition(base.tt.excludeAge.Proc2$CnMem.1.01.Standing, p=.6, list=FALSE,times=1)
+
+BTEP.TRN = base.tt.excludeAge.Proc2[trainIndex.n,]
+BTEP.TST = base.tt.excludeAge.Proc2[-trainIndex.n,]
+
+#j48
+library(pROC)
+library(RWeka)
+J48.TRN.BTEP = J48(CnMem.1.01.Standing ~ ., BTEP.TRN) # train on test set
+J48.TST.BTEP = predict(J48.TRN.BTEP, BTEP.TST, type="prob") # apply model on holdout set to get pred class and class
+
+BTEP.TST$J48prob = J48.TST.BTEP[,"1"]
+J48.BTEP.ROC = roc(response = BTEP.TST$CnMem.1.01.Standing, predictor = BTEP.TST$J48prob)
+auc(J48.BTEP.ROC)
+ci.roc(J48.BTEP.ROC)
+plot(J48.BTEP.ROC, legacy.axes = TRUE)
+
+#j48 - weka verification
+library(partykit)
+#plot(J48.TRN.BTEP)
+eval_J48.BTEP = evaluate_Weka_classifier(J48.TRN.BTEP, BTEP.TST, class=TRUE)
+eval_J48.BTEP
+
+
+##### Nondummy sets - includeAge
+
+set.seed(777)
+trainIndex.ni = createDataPartition(base.tt.includeAge.Proc2$CnMem.1.01.Standing, p=.6, list=FALSE,times=1)
+
+BTiP.TRN = base.tt.includeAge.Proc2[trainIndex.ni,]
+BTiP.TST = base.tt.includeAge.Proc2[-trainIndex.ni,]
+
+#j48
+J48.TRN.BTiP = J48(CnMem.1.01.Standing ~ ., BTiP.TRN) # train on test set
+J48.TST.BTiP = predict(J48.TRN.BTiP, BTiP.TST, type="prob") # apply model on holdout set to get pred class and class
+
+BTiP.TST$J48prob = J48.TST.BTiP[,"1"]
+J48.BTiP.ROC = roc(response = BTiP.TST$CnMem.1.01.Standing, predictor = BTiP.TST$J48prob)
+auc(J48.BTiP.ROC)
+ci.roc(J48.BTiP.ROC)
+plot(J48.BTiP.ROC, legacy.axes = TRUE)
+
+#j48 - weka verification
+library(partykit)
+#plot(J48.TRN.BTiP)
+eval_J48.BTiP = evaluate_Weka_classifier(J48.TRN.BTiP, BTiP.TST, class=TRUE)
+eval_J48.BTiP
+
+##### Dummy sets - CI imputation
+
+set.seed(777)
+trainIndex.nci = createDataPartition(base.tt.CI.Proc2$CnMem.1.01.Standing, p=.6, list=FALSE,times=1)
+
+BTciP.TRN = base.tt.CI.Proc2[trainIndex.nci,]
+BTciP.TST = base.tt.CI.Proc2[-trainIndex.nci,]
+
+#j48
+J48.TRN.BTciP = J48(CnMem.1.01.Standing ~ ., BTciP.TRN) # train on test set
+J48.TST.BTciP = predict(J48.TRN.BTciP, BTciP.TST, type="prob") # apply model on holdout set to get pred class and class
+
+BTciP.TST$J48prob = J48.TST.BTciP[,"1"]
+J48.BTciP.ROC = roc(response = BTciP.TST$CnMem.1.01.Standing, predictor = BTciP.TST$J48prob)
+auc(J48.BTciP.ROC)
+ci.roc(J48.BTciP.ROC)
+plot(J48.BTciP.ROC, legacy.axes = TRUE)
+
+#j48 - weka verification
+library(partykit)
+#plot(J48.TRN.BTciP)
+eval_J48.BTciP = evaluate_Weka_classifier(J48.TRN.BTciP, BTciP.TST, class=TRUE)
+eval_J48.BTciP
+
+##### Dummy sets - KI imputation
+
+set.seed(777)
+trainIndex.nki = createDataPartition(base.tt.KI.Proc2$CnMem.1.01.Standing, p=.6, list=FALSE,times=1)
+
+BTkiP.TRN = base.tt.CI.Proc2[trainIndex.ci,]
+BTkiP.TST = base.tt.CI.Proc2[-trainIndex.ci,]
+
+#j48
+J48.TRN.BTkiP = J48(CnMem.1.01.Standing ~ ., BTkiP.TRN) # train on test set
+J48.TST.BTkiP = predict(J48.TRN.BTkiP, BTkiP.TST, type="prob") # apply model on holdout set to get pred class and class
+
+BTkiP.TST$J48prob = J48.TST.BTkiP[,"1"]
+J48.BTkiP.ROC = roc(response = BTkiP.TST$CnMem.1.01.Standing, predictor = BTkiP.TST$J48prob)
+auc(J48.BTkiP.ROC)
+ci.roc(J48.BTkiP.ROC)
+plot(J48.BTkiP.ROC, legacy.axes = TRUE)
+
+#j48 - weka verification
+library(partykit)
+#plot(J48.TRN.BTkiP)
+eval_J48.BTkiP = evaluate_Weka_classifier(J48.TRN.BTkiP, BTkiP.TST, class=TRUE)
+eval_J48.BTkiP
+
+
+
+```
+
+#### 6c. Data Splitting - holdouts and auc on unpreprocessed dataset
+```{r}
+#### unpreprocessed - excludeage
+
+library(caret)
+# simple 60/40 random sampling splitting based on target
+set.seed(777)
+trainIndex.ue = createDataPartition(base.tt.excludeAge$CnMem.1.01.Standing, p=.6, list=FALSE,times=1)
+
+BTUE.TRN = base.tt.excludeAge[trainIndex.ue,]
+BTUE.TST = base.tt.excludeAge[-trainIndex.ue,]
+
+#j48
+library(pROC)
+library(RWeka)
+J48.TRN.BTUE = J48(CnMem.1.01.Standing ~ ., BTUE.TRN) # train on test set
+J48.TST.BTUE = predict(J48.TRN.BTUE, BTUE.TST, type="prob") # apply model on holdout set to get pred class and class
+
+BTUE.TST$J48prob = J48.TST.BTUE[,"1"]
+J48.BTUE.ROC = roc(response = BTUE.TST$CnMem.1.01.Standing, predictor = BTUE.TST$J48prob)
+auc(J48.BTUE.ROC)
+ci.roc(J48.BTUE.ROC)
+plot(J48.BTUE.ROC, legacy.axes = TRUE)
+
+#j48 - weka verification
+library(partykit)
+#plot(J48.TRN.BTEP)
+eval_J48.BTUE = evaluate_Weka_classifier(J48.TRN.BTUE, BTUE.TST, class=TRUE)
+eval_J48.BTUE
+
+##### unprep- includeAge
+
+set.seed(777)
+trainIndex.ui = createDataPartition(base.tt.includeAge$CnMem.1.01.Standing, p=.6, list=FALSE,times=1)
+
+BTUI.TRN = base.tt.includeAge[trainIndex.ui,]
+BTUI.TST = base.tt.includeAge[-trainIndex.ui,]
+
+#j48
+J48.TRN.BTUI = J48(CnMem.1.01.Standing ~ ., BTUI.TRN) # train on test set
+J48.TST.BTUI = predict(J48.TRN.BTUI, BTUI.TST, type="prob") # apply model on holdout set to get pred class and class
+
+BTUI.TST$J48prob = J48.TST.BTUI[,"1"]
+J48.BTUI.ROC = roc(response = BTUI.TST$CnMem.1.01.Standing, predictor = BTUI.TST$J48prob)
+auc(J48.BTUI.ROC)
+ci.roc(J48.BTUI.ROC)
+plot(J48.BTUI.ROC, legacy.axes = TRUE)
+
+#j48 - weka verification
+library(partykit)
+#plot(J48.TRN.BTUI)
+eval_J48.BTUI = evaluate_Weka_classifier(J48.TRN.BTUI, BTUI.TST, class=TRUE)
+eval_J48.BTUI
+
+```
+
+
+

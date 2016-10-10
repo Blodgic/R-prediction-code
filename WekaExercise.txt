@@ -1,0 +1,91 @@
+TASK 1. 
+
+=== Summary ===
+
+Correctly Classified Instances        7909               97.5216 %
+Incorrectly Classified Instances       201                2.4784 %
+Kappa statistic                          0.9486
+Mean absolute error                      0.0252
+Root mean squared error                  0.1389
+Relative absolute error                  5.2459 %
+Root relative squared error             28.3501 %
+Total Number of Instances             8110     
+
+=== Detailed Accuracy By Class ===
+
+               TP Rate   FP Rate   Precision   Recall  F-Measure   ROC Area  Class
+                 0.97      0.016      0.989     0.97      0.979      0.998    ham
+                 0.984     0.03       0.956     0.984     0.969      0.998    spam
+Weighted Avg.    0.975     0.022      0.976     0.975     0.975      0.998
+
+=== Confusion Matrix ===
+
+    a    b   <-- classified as
+ 4716  148 |    a = ham
+   53 3193 |    b = spam
+
+TASK 2. 
+
+=== Summary ===
+
+Correctly Classified Instances        7811               96.3132 %
+Incorrectly Classified Instances       299                3.6868 %
+Kappa statistic                          0.9221
+Mean absolute error                      0.0358
+Root mean squared error                  0.1624
+Relative absolute error                  7.4573 %
+Root relative squared error             33.1381 %
+Total Number of Instances             8110     
+
+=== Detailed Accuracy By Class ===
+
+               TP Rate   FP Rate   Precision   Recall  F-Measure   ROC Area  Class
+                 0.997     0.088      0.944     0.997     0.97       0.998    ham
+                 0.912     0.003      0.996     0.912     0.952      0.998    spam
+Weighted Avg.    0.963     0.054      0.965     0.963     0.963      0.998
+
+=== Confusion Matrix ===
+
+    a    b   <-- classified as
+ 4851   13 |    a = ham
+  286 2960 |    b = spam
+
+ Task: 
+ The NaiveBayesMultinomial results contained fewer false positives (negative spam classified as spam) but contained more false negatives (positive spam classifed as neagitve)
+
+Task III.
+
+
+Answer: The decision rule of the probabilty of the class given the features greater than .5 means that the correctly classified instances are greater than  the value of .5 which  also corresponds to randomness. Anything at or below .5 is random. In the case of spam, detecting at or even close to .5 would mean that it would be just as accurate to toss a fair coin in deciding if the email was spam or not spam. The decision rule needs to be as close to 1 (or 100% probabilty) as possible to have the most accurate decision making spam model as possible. You do not want to have to many false alarms in the spam detection model.
+
+Task III (on your own).A Confusion Matrix
+
+??????
+
+
+
+
+Task IV. 
+=== Summary ===
+
+Correctly Classified Instances        7365               90.8138 %
+Incorrectly Classified Instances       745                9.1862 %
+Kappa statistic                          0.8148
+Mean absolute error                      0.1035
+Root mean squared error                  0.284 
+Relative absolute error                 21.5539 %
+Root relative squared error             57.9628 %
+Total Number of Instances             8110     
+
+=== Detailed Accuracy By Class ===
+
+               TP Rate   FP Rate   Precision   Recall  F-Measure   ROC Area  Class
+                 0.857     0.015      0.988     0.857     0.918      0.956    ham
+                 0.985     0.143      0.821     0.985     0.896      0.956    spam
+Weighted Avg.    0.908     0.066      0.921     0.908     0.909      0.956
+
+=== Confusion Matrix ===
+
+    a    b   <-- classified as
+ 4169  695 |    a = ham
+   50 3196 |    b = spam
